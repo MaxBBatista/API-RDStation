@@ -1,76 +1,112 @@
 const axios = require("axios");
 
-async function renovarToken() {
+/*[[set $client_secret = "4791e80d01ef4a64b54dcf59b9cfb3d6"]]
+[[set $client_id = "62ef4ccd-d929-4195-be36-ff13f8598406"]]
+[[set $refresh_token = "ct_aB6jzR1dtGAMUq08TwM21AMUHmcf2a1ar4Wg2dro"]]
+
+[[set $identificador_conversao = "Conversão Alya"]] [[#Identificador da conversão marketing]]*/
+
+const bot = {
+  data: {},
+  set: function (key, value) {
+    this.data[key] = value;
+  },
+  get: function (key) {
+    return this.data[key];
+  },
+  api_error: (err, msg) => {
+    return console.error(err, msg);
+  },
+};
+// Simulação do bot para obter os dados do lead
+
+// Configurando os dados do lead
+bot.set("client_secret", "4791e80d01ef4a64b54dcf59b9cfb3d6");
+bot.set("client_id", "62ef4ccd-d929-4195-be36-ff13f8598406");
+bot.set("refresh_token", "ct_aB6jzR1dtGAMUq08TwM21AMUHmcf2a1ar4Wg2dro");
+bot.set("nome_lead", "Max Batista");
+bot.set("email_lead", "teste9@gmail.com");
+bot.set("telefone_lead", "11963561211");
+bot.set("identificador_conversao", "Conversão Alya"); // Identificador da conversão
+
+const getUpdatedToken = async () => {
   const url = "https://api.rd.services/auth/token";
+  const headers = {
+    accept: "application/json",
+    "content-type": "application/json",
+  };
+
   const data = {
-    client_id: "62ef4ccd-d929-4195-be36-ff13f8598406",
-    client_secret: "4791e80d01ef4a64b54dcf59b9cfb3d6",
-    refresh_token: "ct_aB6jzR1dtGAMUq08TwM21AMUHmcf2a1ar4Wg2dro",
+    client_id: bot.get("client_id"),
+    client_secret: bot.get("client_secret"),
+    refresh_token: bot.get("refresh_token"),
   };
 
   try {
-    const response = await axios.post(url, data, {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-    });
-    console.log("Novo token gerado:", response.data.access_token);
-    return response.data.access_token;
+    const response = await axios.post(url, data, { headers });
+    if (response.status === 200) {
+      const token = response.data.access_token;
+      console.log("Token atualizado com sucesso:", token);
+      return token; // Retorna o token atualizado
+    } else {
+      bot.api_error(`Erro ao obter token: ${response.status}`);
+      return null;
+    }
   } catch (error) {
-    console.error("Erro ao renovar o token:", error.message);
-    throw error;
-  }
-}
-
-async function criarLead() {
-  const rdToken = bot.get("refresh_token"); // Token do RD Station
-  const leadData = {
-    contact: {
-      emails: [{ email: bot.get("email_lead") }],
-      name: bot.get("nome_lead"),
-      phones: [{ phone: bot.get("telefone_lead"), type: "home" }],
-    },
-  };
-
-  const options = {
-    url: `https://api.rd.services/platform/contacts`,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    data: leadData,
-  };
-
-  try {
-    const response = await axios(options);
-    console.log(`Lead criado com sucesso: ${response.data.id}`);
-    return response.data;
-  } catch (err) {
-    // Verificar se o erro é relacionado ao token
-
-    bot.api_error(err, "Erro na API RD Station");
-
     return null;
   }
-}
+};
 
-// Execute a função para renovar o token
-renovarToken();
+// Função para pegar os dados do lead e registrar a conversão
+const createConversionEvent = async (accessToken) => {
+  const leadData = {
+    event_type: "CONVERSION",
+    event_family: "CDP",
+    payload: {
+      conversion_identifier: bot.get("identificador_conversao"),
+      name: bot.get("nome_lead"),
+      email: bot.get("email_lead"),
+      personal_phone: bot.get("telefone_lead"),
+    },
+  };
 
-// Dados coletados do chatbot
-async function main() {
+  const config = {
+    method: "post",
+    maxBodyLength: Infinity,
+    url: "https://api.rd.services/platform/events",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    data: JSON.stringify(leadData),
+  };
+
   try {
-    const lead = await criarLead();
-    if (lead) {
-      bot.set("api_ok", "1");
-    } else {
-      bot.set("api_ok", "0");
-    }
-    return "";
-  } catch (err) {
-    bot.api_error(err, "Erro inesperado na execução.");
+    const response = await axios.request(config);
+    console.log("Conversão registrada com sucesso:", response.data);
+    return response.data;
+  } catch (error) {
+    return null;
   }
-}
+};
 
+// Fluxo principal - Organizando o código em dois botões
+const main = async () => {
+  try {
+    // Obter token
+    const token = await getUpdatedToken();
+    if (!token) {
+      bot.api_error("Erro: Não foi possível obter o token.");
+      return;
+    }
+
+    // Agora registrar a conversão usando o token
+    await createConversionEvent(token);
+    bot.set("api_ok", "1");
+  } catch (error) {
+    bot.api_error("Erro no fluxo principal:", error.message);
+  }
+};
+
+// Inicia o processo (aqui é onde o fluxo começa)
 main();
